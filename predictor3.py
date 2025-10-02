@@ -1,17 +1,15 @@
 """
-Enhanced Multi-Currency MT5 LSTM Predictor
+Enhanced Multi-Currency MT5 LSTM Predictor with Backtesting Support
 Author: Jason Rusk
-Version: 4.0 (Enhanced Accuracy + Multi-Currency)
+Version: 4.1 (Added historical prediction generation for EA backtesting)
 
-Major Improvements:
-1. Advanced feature engineering (40+ features)
-2. Improved model architecture with Bidirectional LSTM and CNN layers
-3. Multi-currency support with correlation features
-4. Robust scaling and better validation
-5. Ensemble prediction capability
+New in v4.1:
+- Generate historical predictions for backtesting
+- Export MT5-compatible lookup files
+- Maintain exact same model/features between live and backtest
 """
 
-# --- ⚠ CONFIGURATION: SET YOUR MT5 PATH HERE ⚠ ---
+# --- CONFIGURATION: SET YOUR MT5 PATH HERE ---
 HARDCODED_MT5_FILES_PATH = r"C:\Users\jason\AppData\Roaming\MetaQuotes\Terminal\D0E8209F77C8CF37AD8BF550E51FF075\MQL5\Files"
 
 # --- Do not edit below this line ---
@@ -64,15 +62,15 @@ class UnifiedLSTMPredictor:
         self.model_path = os.path.join(self.base_path, f"model_{self.symbol}.h5")
         self.feature_scaler_path = os.path.join(self.base_path, f"feature_scaler_{self.symbol}.pkl")
         self.target_scaler_path = os.path.join(self.base_path, f"target_scaler_{self.symbol}.pkl")
-        print(f"🧠 Enhanced LSTM Predictor Initialized for {self.symbol} (v4.0)")
+        print(f"Enhanced LSTM Predictor Initialized for {self.symbol} (v4.1)")
         self.initialize_mt5()
 
     def get_mt5_files_path(self):
         if HARDCODED_MT5_FILES_PATH and os.path.exists(HARDCODED_MT5_FILES_PATH):
-            print(f"✅ Using hardcoded path: '{HARDCODED_MT5_FILES_PATH}'")
+            print(f"Using hardcoded path: '{HARDCODED_MT5_FILES_PATH}'")
             return HARDCODED_MT5_FILES_PATH
         else:
-            print(f"❌ FATAL ERROR: Hardcoded path NOT FOUND or is empty.")
+            print(f"FATAL ERROR: Hardcoded path NOT FOUND or is empty.")
             sys.exit(1)
     
     def get_real_world_accuracy(self, timeframe):
@@ -103,25 +101,32 @@ class UnifiedLSTMPredictor:
 
     def initialize_mt5(self):
         if not mt5.initialize(): 
-            print("❌ Initialize failed")
+            print("Initialize failed")
             return False
-        print(f"✅ Connected to MT5: {mt5.account_info().login}")
+        print(f"Connected to MT5: {mt5.account_info().login}")
         return True
 
-    def download_data(self):
-        print(f"📊 Downloading multi-timeframe data for {self.symbol}...")
-        df_h1 = pd.DataFrame(mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_H1, 0, 10000))
-        df_h4 = pd.DataFrame(mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_H4, 0, 2500))
-        df_d1 = pd.DataFrame(mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_D1, 0, 500))
+    def download_data(self, bars=35000):
+        """Download historical data. Default 35000 bars = ~5 years of H1 data"""
+        print(f"Downloading multi-timeframe data for {self.symbol}...")
+        print(f"   Requesting {bars} H1 bars (~{bars/24/260:.1f} years of trading days)")
+        df_h1 = pd.DataFrame(mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_H1, 0, bars))
+        df_h4 = pd.DataFrame(mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_H4, 0, bars//4))
+        df_d1 = pd.DataFrame(mt5.copy_rates_from_pos(self.symbol, mt5.TIMEFRAME_D1, 0, bars//20))
         
         for df, name in [(df_h1, "H1"), (df_h4, "H4"), (df_d1, "D1")]:
             if df.empty: 
-                print(f"❌ Failed to download {name} data")
+                print(f"Failed to download {name} data")
                 return None, None, None
             df['time'] = pd.to_datetime(df['time'], unit='s')
             df.set_index('time', inplace=True)
             df.rename(columns={'tick_volume': 'volume'}, inplace=True)
         
+        # Show actual data range downloaded
+        date_range_days = (df_h1.index[-1] - df_h1.index[0]).days
+        print(f"Downloaded {len(df_h1)} H1 bars")
+        print(f"   Date range: {df_h1.index[0].strftime('%Y-%m-%d')} to {df_h1.index[-1].strftime('%Y-%m-%d')}")
+        print(f"   Total span: {date_range_days} days (~{date_range_days/365:.1f} years)")
         return df_h1, df_h4, df_d1
 
     def add_correlation_features(self, df):
@@ -146,15 +151,15 @@ class UnifiedLSTMPredictor:
                 if df[f'{related}_close'].notna().any():
                     df[f'ratio_{related}'] = df['close'] / df[f'{related}_close']
                 
-                print(f"      ✓ Added {related} features")
+                print(f"      Added {related} features")
                 
             except Exception as e:
-                print(f"      ⚠ Could not add {related}: {e}")
+                print(f"      Could not add {related}: {e}")
         
         return df
 
     def create_features(self, df_h1, df_h4, df_d1):
-        print("⚙️ Creating advanced features (40+ indicators)...")
+        print("Creating advanced features (40+ indicators)...")
         df = df_h1.copy()
         
         # Multi-timeframe moving averages
@@ -245,7 +250,7 @@ class UnifiedLSTMPredictor:
             df = self.add_correlation_features(df)
         
         df.dropna(inplace=True)
-        print(f"   ✓ Created {len(df.columns)} features from {len(df)} bars")
+        print(f"   Created {len(df.columns)} features from {len(df)} bars")
         return df
 
     def prepare_data(self, df):
@@ -297,7 +302,7 @@ class UnifiedLSTMPredictor:
         
         inputs = Input(shape=input_shape)
         
-        # Bidirectional LSTM layers (64*2=128 output dimensions)
+        # Bidirectional LSTM layers
         x = Bidirectional(LSTM(64, return_sequences=True))(inputs)
         x = Dropout(0.3)(x)
         x = LayerNormalization()(x)
@@ -308,11 +313,11 @@ class UnifiedLSTMPredictor:
         
         # Multi-head attention with residual connection
         attention = MultiHeadAttention(num_heads=8, key_dim=64)(x_lstm, x_lstm)
-        x = LayerNormalization()(attention + x_lstm)  # Both are 128-dim
+        x = LayerNormalization()(attention + x_lstm)
         
-        # CNN layer for local pattern detection (match 128 dimensions)
+        # CNN layer for local pattern detection
         conv = Conv1D(filters=128, kernel_size=3, activation='relu', padding='same')(x)
-        x = LayerNormalization()(conv + x)  # Both are 128-dim now
+        x = LayerNormalization()(conv + x)
         
         # Global pooling
         x = GlobalAveragePooling1D()(x)
@@ -328,16 +333,16 @@ class UnifiedLSTMPredictor:
         model = Model(inputs=inputs, outputs=outputs)
         model.compile(
             optimizer=Adam(learning_rate=0.0005),
-            loss='huber',  # More robust to outliers
+            loss='huber',
             metrics=['mae', 'mse']
         )
         
-        print(f"   ✓ Model built with {model.count_params():,} parameters")
+        print(f"   Model built with {model.count_params():,} parameters")
         return model
 
     def train_or_load_model(self, df):
         if os.path.exists(self.model_path):
-            print(f"🧠 Loading existing model from {self.model_path}")
+            print(f"Loading existing model from {self.model_path}")
             try:
                 model = load_model(self.model_path)
                 with open(self.feature_scaler_path, 'rb') as f: 
@@ -353,18 +358,18 @@ class UnifiedLSTMPredictor:
                 actual_features = len(feature_cols)
                 
                 if expected_features != actual_features:
-                    print(f"   ⚠️  Feature mismatch: Model expects {expected_features}, but data has {actual_features}")
-                    print(f"   🔄 Retraining model with new feature set...")
+                    print(f"   Feature mismatch: Model expects {expected_features}, but data has {actual_features}")
+                    print(f"   Retraining model with new feature set...")
                     raise ValueError("Feature count mismatch - retraining required")
                 
-                print("   ✓ Model and scalers loaded successfully")
+                print("   Model and scalers loaded successfully")
                 return model, feature_scaler, target_scaler, feature_cols
                 
             except Exception as e: 
-                print(f"   ⚠️  Cannot load existing model: {str(e)[:100]}")
-                print(f"   🔄 Training new model...")
+                print(f"   Cannot load existing model: {str(e)[:100]}")
+                print(f"   Training new model...")
         
-        print("💪 Training new enhanced model...")
+        print("Training new enhanced model...")
         X_train, y_train, X_val, y_val, feature_scaler, target_scaler, feature_cols = self.prepare_data(df)
         
         model = self.build_model((X_train.shape[1], X_train.shape[2]))
@@ -391,19 +396,117 @@ class UnifiedLSTMPredictor:
         with open(self.target_scaler_path, 'wb') as f: 
             pickle.dump(target_scaler, f)
         
-        print(f"\n   ✓ Model saved to {self.model_path}")
+        print(f"\n   Model saved to {self.model_path}")
         
         return model, feature_scaler, target_scaler, feature_cols
 
+    def generate_historical_predictions(self, df, model, feature_scaler, target_scaler, feature_cols):
+        """Generate predictions for all historical bars for backtesting"""
+        print("\n" + "="*60)
+        print("GENERATING HISTORICAL PREDICTIONS FOR BACKTESTING")
+        print("="*60)
+        
+        timeframes = {"1H": 1, "4H": 4, "1D": 24, "5D": 120}
+        all_predictions = {tf: [] for tf in timeframes.keys()}
+        timestamps = []
+        
+        # Prepare all features
+        features_scaled = feature_scaler.transform(df[feature_cols].values)
+        
+        # Generate predictions for each bar (after lookback period)
+        print(f"Generating predictions for {len(df) - self.lookback_periods} bars...")
+        
+        for i in range(self.lookback_periods, len(df)):
+            # Get sequence for this bar
+            sequence = features_scaled[i-self.lookback_periods:i]
+            X_pred = sequence.reshape(1, self.lookback_periods, len(feature_cols))
+            
+            # Current price
+            current_price = df['close'].iloc[i]
+            timestamp = df.index[i]
+            
+            # Predict for each timeframe
+            for tf_name, steps in timeframes.items():
+                pred_log_return_scaled = model.predict(X_pred, verbose=0)[0][0]
+                pred_log_return = target_scaler.inverse_transform([[pred_log_return_scaled]])[0][0]
+                predicted_price = current_price * np.exp(pred_log_return * steps)
+                
+                all_predictions[tf_name].append(predicted_price)
+            
+            timestamps.append(timestamp)
+            
+            # Progress update
+            if (i - self.lookback_periods) % 500 == 0:
+                progress = ((i - self.lookback_periods) / (len(df) - self.lookback_periods)) * 100
+                print(f"   Progress: {progress:.1f}% ({i - self.lookback_periods}/{len(df) - self.lookback_periods})")
+        
+        print(f"\nGenerated {len(timestamps)} predictions per timeframe")
+        
+        # Export to MT5-compatible files
+        self.export_backtest_files(timestamps, all_predictions, df['close'].iloc[self.lookback_periods:].values)
+        
+        return timestamps, all_predictions
+
+    def export_backtest_files(self, timestamps, predictions, actual_prices):
+        """Export predictions in MT5 EA-compatible format"""
+        print("\nExporting backtest files...")
+        
+        output_dir = os.path.join(self.base_path, 'predictions')
+        os.makedirs(output_dir, exist_ok=True)
+        
+        for tf_name, pred_values in predictions.items():
+            # Create lookup file for EA (timestamp, prediction)
+            lookup_file = os.path.join(self.base_path, f'{self.symbol}_{tf_name}_lookup.csv')
+            
+            with open(lookup_file, 'w') as f:
+                for ts, pred in zip(timestamps, pred_values):
+                    ts_str = ts.strftime('%Y.%m.%d %H:%M')
+                    f.write(f'{ts_str},{pred:.5f}\n')
+            
+            print(f"   Created: {lookup_file}")
+            
+            # Create detailed CSV with actual vs predicted
+            detail_file = os.path.join(output_dir, f'{self.symbol}_{tf_name}_predictions.csv')
+            
+            df_export = pd.DataFrame({
+                'timestamp': timestamps,
+                'actual': actual_prices,
+                'predicted': pred_values,
+                'error': actual_prices - pred_values,
+                'direction_correct': np.sign(pred_values - actual_prices) == np.sign(actual_prices - np.roll(actual_prices, 1))
+            })
+            
+            df_export.to_csv(detail_file, index=False)
+            print(f"   Created: {detail_file}")
+        
+        # Create summary JSON
+        summary = {
+            'symbol': self.symbol,
+            'generated_at': datetime.now().isoformat(),
+            'total_bars': len(timestamps),
+            'date_range': {
+                'start': timestamps[0].isoformat(),
+                'end': timestamps[-1].isoformat()
+            },
+            'timeframes': list(predictions.keys())
+        }
+        
+        summary_file = os.path.join(output_dir, f'predictions_{self.symbol}.json')
+        with open(summary_file, 'w') as f:
+            json.dump(summary, f, indent=2)
+        
+        print(f"   Created: {summary_file}")
+        print("\nBacktest files ready for MT5 EA!")
+
     def run_prediction_cycle(self):
         print("\n" + "="*60)
-        print(f"🚀 Starting Prediction Cycle for {self.symbol}")
+        print(f"Starting Prediction Cycle for {self.symbol}")
         print(f"   Time: {datetime.now()}")
         print("="*60)
         
         df_h1, df_h4, df_d1 = self.download_data()
         if df_h1 is None: 
-            print("❌ Failed to download data")
+            print("Failed to download data")
             return
         
         df = self.create_features(df_h1, df_h4, df_d1)
@@ -419,7 +522,7 @@ class UnifiedLSTMPredictor:
         predictions = {}
         timeframes = {"1H": 1, "4H": 4, "1D": 24, "5D": 120}
         
-        print("\n🎯 Making predictions and checking real-world accuracy...")
+        print("\nMaking predictions and checking real-world accuracy...")
         
         for tf_name, steps in timeframes.items():
             pred_log_return_scaled = model.predict(X_pred, verbose=0)[0][0]
@@ -444,166 +547,93 @@ class UnifiedLSTMPredictor:
         self.save_to_file(self.predictions_file, predictions)
         self.save_to_file(self.status_file, status)
         
-        print("\n🎉 Prediction Cycle Complete!")
-        print(f"💰 Current Price: {current_price:.5f}")
+        print("\nPrediction Cycle Complete!")
+        print(f"Current Price: {current_price:.5f}")
         for tf, data in predictions.items():
-            direction = "📈" if data['prediction'] > current_price else "📉"
+            direction = "UP" if data['prediction'] > current_price else "DOWN"
             print(f"   {direction} {tf}: {data['prediction']:.5f} (Accuracy: {data['accuracy']:.1f}%)")
+
+    def run_backtest_generation(self):
+        """Generate all historical predictions for backtesting"""
+        print("\n" + "="*60)
+        print(f"BACKTEST MODE: Generating Historical Predictions")
+        print(f"   Symbol: {self.symbol}")
+        print("="*60)
+        
+        # Download 5 years of historical data
+        df_h1, df_h4, df_d1 = self.download_data(bars=35000)
+        if df_h1 is None:
+            print("Failed to download data")
+            return
+        
+        df = self.create_features(df_h1, df_h4, df_d1)
+        model, feature_scaler, target_scaler, feature_cols = self.train_or_load_model(df)
+        
+        # Generate historical predictions
+        self.generate_historical_predictions(df, model, feature_scaler, target_scaler, feature_cols)
+        
+        print("\n" + "="*60)
+        print("BACKTEST GENERATION COMPLETE!")
+        print("="*60)
+        print("\nGenerated files:")
+        print(f"  - {self.symbol}_1H_lookup.csv")
+        print(f"  - {self.symbol}_4H_lookup.csv")
+        print(f"  - {self.symbol}_1D_lookup.csv")
+        print(f"  - {self.symbol}_5D_lookup.csv")
+        print("\nThese files are ready to use with your MT5 EA for backtesting.")
 
     def save_to_file(self, file_path, data):
         try:
             with open(file_path, 'w') as f: 
                 json.dump(data, f, indent=4)
         except Exception as e: 
-            print(f"❌ Error saving to {file_path}: {e}")
+            print(f"Error saving to {file_path}: {e}")
 
     def run_continuous(self, interval_minutes=60):
-        print(f"\n🚀 Starting Continuous Mode for {self.symbol}")
+        print(f"\nStarting Continuous Mode for {self.symbol}")
         print(f"   Update interval: {interval_minutes} minutes")
         
         while True:
             try:
                 self.run_prediction_cycle()
-                print(f"\n⏰ Waiting {interval_minutes} minutes until next cycle...")
+                print(f"\nWaiting {interval_minutes} minutes until next cycle...")
                 time.sleep(interval_minutes * 60)
             except KeyboardInterrupt:
-                print("\n🛑 Service stopped by user.")
+                print("\nService stopped by user.")
                 break
             except Exception as e:
-                print(f"❌ An error occurred: {e}")
-                print("   Retrying in 5 minutes...")
-                time.sleep(300)
-
-
-class MultiCurrencyPredictor:
-    """Manages predictions for multiple currency pairs simultaneously"""
-    
-    def __init__(self, symbols=None):
-        if symbols is None:
-            symbols = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD"]
-        
-        self.symbols = symbols
-        self.predictors = {}
-        
-        # Define related symbols for correlation features
-        correlation_map = {
-            "EURUSD": ["GBPUSD", "USDJPY"],
-            "GBPUSD": ["EURUSD", "USDJPY"],
-            "USDJPY": ["EURUSD", "GBPUSD"],
-            "AUDUSD": ["EURUSD", "USDJPY"],
-            "USDCHF": ["EURUSD", "GBPUSD"],
-            "USDCAD": ["EURUSD", "USDJPY"]
-        }
-        
-        print(f"\n{'='*60}")
-        print(f"🌍 Multi-Currency Predictor Initialized")
-        print(f"   Tracking: {', '.join(symbols)}")
-        print(f"{'='*60}\n")
-        
-        # Initialize predictor for each symbol
-        for symbol in symbols:
-            related = correlation_map.get(symbol, [])
-            related = [s for s in related if s in symbols and s != symbol]
-            self.predictors[symbol] = UnifiedLSTMPredictor(symbol, related_symbols=related)
-    
-    def run_all_predictions(self):
-        """Run predictions for all currency pairs"""
-        results = {}
-        start_time = time.time()
-        
-        for i, symbol in enumerate(self.symbols, 1):
-            try:
-                print(f"\n{'='*60}")
-                print(f"[{i}/{len(self.symbols)}] Processing {symbol}")
-                print(f"{'='*60}")
-                
-                predictor = self.predictors[symbol]
-                predictor.run_prediction_cycle()
-                results[symbol] = "✅ Success"
-                
-            except Exception as e:
-                print(f"❌ Error processing {symbol}: {e}")
-                results[symbol] = f"❌ Error: {str(e)[:50]}"
-        
-        elapsed = time.time() - start_time
-        
-        print(f"\n{'='*60}")
-        print("📊 SUMMARY OF CURRENT CYCLE")
-        print(f"{'='*60}")
-        for symbol, status in results.items():
-            print(f"   {symbol}: {status}")
-        print(f"\n⏱️  Total time: {elapsed:.1f} seconds")
-        print(f"{'='*60}")
-        
-        return results
-    
-    def run_continuous(self, interval_minutes=60):
-        """Continuously update all currency pairs"""
-        print(f"\n🚀 Starting Multi-Currency Continuous Mode")
-        print(f"   Symbols: {', '.join(self.symbols)}")
-        print(f"   Update interval: {interval_minutes} minutes\n")
-        
-        cycle_count = 0
-        
-        while True:
-            try:
-                cycle_count += 1
-                print(f"\n{'#'*60}")
-                print(f"# CYCLE {cycle_count} - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                print(f"{'#'*60}")
-                
-                results = self.run_all_predictions()
-                
-                print(f"\n⏰ Waiting {interval_minutes} minutes until next cycle...")
-                time.sleep(interval_minutes * 60)
-                
-            except KeyboardInterrupt:
-                print("\n🛑 Multi-currency service stopped by user.")
-                print(f"   Completed {cycle_count} cycles.")
-                break
-            except Exception as e:
-                print(f"❌ Critical error in cycle {cycle_count}: {e}")
+                print(f"An error occurred: {e}")
                 print("   Retrying in 5 minutes...")
                 time.sleep(300)
 
 
 def main():
     print("""
-    ╔═══════════════════════════════════════════════════════════╗
-    ║   Enhanced Multi-Currency MT5 LSTM Predictor v4.0         ║
-    ║   Advanced AI-Powered Forex Predictions                   ║
-    ╚═══════════════════════════════════════════════════════════╝
+    ╔═════════════════════════════════════════════════════════╗
+    ║   Enhanced MT5 LSTM Predictor v4.1                      ║
+    ║   Now with Backtesting Support                          ║
+    ╚═════════════════════════════════════════════════════════╝
     """)
     
-    # Define available currency pairs
-    available_pairs = ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCHF", "USDCAD"]
-    
-    if len(sys.argv) > 1 and sys.argv[1] == 'multi':
-        # Multi-currency mode
-        if len(sys.argv) > 2 and sys.argv[2] not in ['continuous']:
-            # Custom symbol list
-            symbols = sys.argv[2].split(',')
-        else:
-            # Default symbols
-            symbols = available_pairs
+    if len(sys.argv) > 1 and sys.argv[1] == 'backtest':
+        # Backtest mode - generate historical predictions
+        symbol = sys.argv[2] if len(sys.argv) > 2 else "EURUSD"
         
-        multi_predictor = MultiCurrencyPredictor(symbols)
+        related_map = {
+            "EURUSD": ["GBPUSD", "USDJPY"],
+            "GBPUSD": ["EURUSD", "USDJPY"],
+            "USDJPY": ["EURUSD", "GBPUSD"],
+            "AUDUSD": ["EURUSD", "USDJPY"]
+        }
+        related = related_map.get(symbol, [])
         
-        if 'continuous' in sys.argv:
-            interval = 60
-            for arg in sys.argv:
-                if arg.isdigit():
-                    interval = int(arg)
-                    break
-            multi_predictor.run_continuous(interval)
-        else:
-            multi_predictor.run_all_predictions()
-    
+        predictor = UnifiedLSTMPredictor(symbol, related_symbols=related)
+        predictor.run_backtest_generation()
+        
     else:
-        # Single currency mode
+        # Normal mode - single prediction or continuous
         symbol = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] != 'continuous' else "EURUSD"
         
-        # Related symbols for correlation features
         related_map = {
             "EURUSD": ["GBPUSD", "USDJPY"],
             "GBPUSD": ["EURUSD", "USDJPY"],
@@ -625,7 +655,7 @@ def main():
             predictor.run_prediction_cycle()
     
     mt5.shutdown()
-    print("\n👋 Shutdown complete. Thank you!")
+    print("\nShutdown complete. Thank you!")
 
 
 if __name__ == "__main__":
