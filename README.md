@@ -1,304 +1,581 @@
-GGTH AI Prediction & Backtesting System
-Complete guide for generating ML predictions and backtesting your EA with real prediction data.
-📋 Table of Contents
+# GGTH AI Trading System - Usage Instructions
+# Copyright 2025 Jason.w.rusk@gmail.com
 
-System Overview
-Installation
-Step-by-Step Workflow
-Python Script Usage
-EA Backtesting
-Troubleshooting
+Complete guide for using the Python prediction generator, MT5 indicator, and Expert Advisor together.
 
+---
 
-System Overview
-This system consists of two components:
+## Initial Setup (One-Time Configuration)
 
-Python Prediction Generator - Trains LSTM models and generates predictions
-MT5 Expert Advisor - Uses predictions for backtesting and live trading
+### Step 1: Install Python Components
 
-How It Works
-Historical Data → Python ML Model → Predictions File → MT5 EA → Backtest Results
+Open Command Prompt and install required packages:
 
-Installation
-Python Requirements
-bash# Install required packages
-pip install tensorflow numpy pandas scikit-learn matplotlib MetaTrader5
+```bash
+pip install tensorflow MetaTrader5 pandas numpy scikit-learn matplotlib
+```
 
-# Or install individually:
-pip install tensorflow        # Deep learning framework
-pip install numpy pandas      # Data manipulation
-pip install scikit-learn      # ML utilities
-pip install matplotlib        # Plotting
-pip install MetaTrader5       # MT5 integration for data download
-Note: MetaTrader5 package requires MT5 terminal to be installed and running.
-MT5 Setup
+**For Mac users (M1/M2/M3):**
+```bash
+pip install tensorflow-macos tensorflow-metal MetaTrader5 pandas numpy scikit-learn matplotlib
+```
 
-Place the EA in: MQL5/Experts/
-Place prediction files in: MQL5/Files/
-Compile the EA in MetaEditor
+### Step 2: Configure Python Script
 
+Edit `predictor3.py` and set your MT5 Files path:
 
-Step-by-Step Workflow
-Step 1: Get Historical Data
-Option A: Auto-download from MT5 (Recommended)
+```python
+HARDCODED_MT5_FILES_PATH = r"C:\Users\YOUR_USERNAME\AppData\Roaming\MetaQuotes\Terminal\YOUR_ID\MQL5\Files"
+```
 
-Make sure MetaTrader 5 is running and logged in
-The Python script will automatically download data
-Configure symbol and timeframe in the script
+**To find your path:**
+1. Open MT5
+2. File → Open Data Folder
+3. Navigate to MQL5 → Files
+4. Copy the full path from address bar
+5. Paste into script
 
-Option B: Manual Export from MT5
+### Step 3: Install MT5 Components
 
-Open MT5 → Select symbol (e.g., EURUSD)
-Open Data Window (Ctrl+D)
-Right-click → Export to CSV
-Include: Timestamp, Open, High, Low, Close, Volume
+**Install Indicator:**
+1. Copy `Predictor3.mq5` to: `MQL5\Indicators\`
+2. Open MetaEditor (F4 in MT5)
+3. Open the indicator file
+4. Click Compile (F7)
+5. Verify no errors
 
-Important: Ensure you have enough historical data loaded in MT5. Go to Tools → Options → Charts → Max bars in history (set to 999999).
-Step 2: Run Python Script
-bashpython backtest3.py
-The script will:
+**Install Expert Advisor:**
+1. Copy `GGTH EA v1.3.mq5` to: `MQL5\Experts\`
+2. Open MetaEditor
+3. Open the EA file
+4. Click Compile (F7)
+5. Verify no errors
 
-Load your historical data
-Create technical indicators
-Train LSTM models for each timeframe (1H, 4H, 1D, 5D)
-Generate predictions
-Export files for MT5
+### Step 4: Prepare MT5 Historical Data
 
-Output Files:
-predictions/
-├── predictions_EURUSD.json          # Summary with accuracies
-├── EURUSD_1H_predictions.csv        # Detailed 1H predictions
-├── EURUSD_4H_predictions.csv        # Detailed 4H predictions
-├── EURUSD_1D_predictions.csv        # Detailed 1D predictions
-├── EURUSD_5D_predictions.csv        # Detailed 5D predictions
-├── EURUSD_1H_lookup.csv             # EA lookup file
-├── EURUSD_4H_lookup.csv             # EA lookup file
-├── EURUSD_1D_lookup.csv             # EA lookup file
-└── EURUSD_5D_lookup.csv             # EA lookup file
-Step 3: Copy Files to MT5
-bash# Copy lookup files to MT5
-cp predictions/*_lookup.csv C:/Users/YourName/AppData/Roaming/MetaQuotes/Terminal/XXXXX/MQL5/Files/
-Or manually copy:
+**Critical for accuracy:**
+1. Open MT5
+2. Go to: Tools → Options → Charts
+3. Set: Max bars in history = 999999
+4. Set: Max bars in chart = 999999
+5. Click OK
 
-Source: predictions/ folder
-Destination: MT5 Data Folder → MQL5 → Files
+**Load history for your symbol:**
+1. Open EURUSD chart (or your symbol)
+2. Set timeframe to H1
+3. Press Home key
+4. Scroll left to load more data
+5. Wait 1-2 minutes
+6. You should see 5+ years of data
 
-Step 4: Run Backtest
+---
 
-Open MT5 Strategy Tester (Ctrl+R)
-Select the EA: GGTH Predictorv11
-Set parameters:
+## Daily Workflow
 
-UsePredictionFile = true
-PredictionTimeframe = "4H" (or whichever you want to test)
-Configure risk and strategy settings
+### Scenario 1: Live Trading with Continuous Predictions
+
+Use this workflow when actively trading with the EA.
+
+**Morning Setup (One Time):**
+
+1. **Start Python Prediction Service**
+
+Open Command Prompt:
+make sure your in the folder that predictor3 is in then run this
+python predictor3.py EURUSD continuous 60
 
 
-Choose backtest period (must overlap with prediction dates)
-Click Start
+This will:
+- Update predictions every 60 minutes
+- Run continuously until you stop it
+- Save predictions to MQL5 Files folder
 
+**Leave this window open all day.**
 
-Python Script Usage
-Configuration Options
-python# In the script's __main__ section:
+2. **Attach Indicator to Chart**
 
-SYMBOL = 'EURUSD'                    # Trading symbol (check MT5 for exact name)
-DATA_FILE = None                     # Set to CSV path, or None for auto-download
-TIMEFRAME = '1H'                     # 1M, 5M, 15M, 30M, 1H, 4H, 1D, 1W
-DAYS = 730                           # Days of history to download (730 = 2 years)
-EPOCHS = 30                          # Training epochs (30-100)
-Important Symbol Names:
+In MT5:
+- Open EURUSD chart
+- Set timeframe to H1
+- Navigator → Indicators → Custom → GGTH Predict v4.1
+- Drag onto chart
+- Click OK
 
-Your broker may use different symbol names
-Common variations: 'EURUSD', 'EURUSDm', 'EURUSD.a', 'EURUSD.raw'
-Check Market Watch in MT5 for exact symbol name
-The script will tell you if symbol not found
+You'll see:
+- Service status (Online/Offline)
+- Current predictions for all timeframes
+- Real-time accuracy tracking
+- Color-coded confidence levels
 
-Custom Data Format
-Your CSV should have these columns:
-timestamp,open,high,low,close,volume
-2024-01-01 00:00,1.1050,1.1055,1.1045,1.1052,1000
-2024-01-01 01:00,1.1052,1.1060,1.1050,1.1058,1200
-...
-Training Configuration
-python# Adjust these in the script:
-lookback = 60        # How many bars to look back
-epochs = 50          # Training iterations
-batch_size = 32      # Training batch size
-Understanding the Output
-Results for 4H:
-MAE: 0.00123         # Mean Absolute Error (lower = better)
-MAPE: 2.45%          # Mean Absolute Percentage Error
-Direction Accuracy: 72.5%  # % of correct direction predictions
+3. **Attach EA to Chart**
 
-EA Backtesting
-EA Input Parameters
-Backtesting Mode
+In MT5:
+- Same chart (EURUSD H1)
+- Navigator → Expert Advisors → GGTH EA v1.3
+- Drag onto chart
+- Configure parameters (see Configuration section)
+- Enable Algo Trading button (top toolbar)
+- Click OK
 
-UsePredictionFile = true - Use Python-generated predictions
-SimulationMode = false - Fallback simulation mode
-SimAccuracy = 70.0 - Simulation accuracy (if SimulationMode = true)
+---
 
-Indicator Settings
+### Scenario 2: Backtesting Strategy
 
-IndicatorName = "Predictor3" - Custom indicator name
-PredictionTimeframe = "4H" - Which timeframe to use (1H/4H/1D/5D)
-UseIndicatorAccuracy = true - Use indicator's accuracy
+Use this to test your strategy on historical data before live trading.
 
-Risk Management
+**Generate Historical Predictions:**
 
-RiskPercent = 1.0 - Risk per trade (% of balance)
-MaxDailyLoss = 5.0 - Stop trading after this daily loss
-MaxOpenTrades = 3 - Maximum concurrent positions
-UseFixedLot = false - Use fixed lot size
-FixedLotSize = 0.01 - If UseFixedLot = true
+1. **Make sure MT5 is running and logged in**
 
-Trading Strategy
+2. **Run Python in Backtest Mode**
 
-MinConfidence = 60.0 - Minimum confidence threshold
-StopLossPips = 50 - Stop loss distance
-TakeProfitPips = 100 - Take profit distance
-UsePredictionAsTP = true - Use predicted price as TP
-UseTrailingStop = true - Enable trailing stop
-TrailingStopPips = 30 - Trailing stop distance
-TrailingStepPips = 10 - Trailing stop step
+Open Command Prompt:
+```bash
+cd C:\Trading
+python predictor3.py backtest EURUSD
+```
 
-Backtesting Modes
-The EA has 3 modes:
+What happens:
+- Downloads 5 years of H1 data
+- Creates 40+ technical indicators
+- Trains LSTM model (20-60 min first time)
+- Generates predictions for every bar
+- Exports CSV files to MQL5 Files folder
 
-File Mode (Recommended) - Uses Python predictions
+**Wait for completion** (30-90 minutes first run)
 
-Set: UsePredictionFile = true
-Most accurate for backtesting
+Output files created:
+```
+EURUSD_1H_lookup.csv
+EURUSD_4H_lookup.csv
+EURUSD_1D_lookup.csv
+EURUSD_5D_lookup.csv
+```
 
+3. **Run Strategy Tester**
 
-Indicator Mode - Uses custom indicator
+In MT5:
+- Press Ctrl+R (or View → Strategy Tester)
+- Expert: Select "GGTH EA v1.3"
+- Symbol: EURUSD (must match your predictions)
+- Period: H1 (chart timeframe)
+- Date: 2021.01.01 to 2024.12.31
+- Mode: Every tick
 
-Set: UsePredictionFile = false, SimulationMode = false
-Requires indicator to be installed
+4. **Configure EA Parameters**
 
+Click "Expert properties":
 
-Simulation Mode - Fallback testing
+```
+Backtesting Mode:
+  UsePredictionFile = true
+  PredictionTimeframe = "4H"
+  SimulationMode = false
 
-Set: SimulationMode = true
-Uses look-ahead for quick testing
+Risk Management:
+  RiskPercent = 1.0
+  MaxDailyLoss = 5.0
+  MaxOpenTrades = 3
 
+Trading Strategy:
+  MinConfidence = 60.0
+  StopLossPips = 50
+  TakeProfitPips = 100
+  UsePredictionAsTP = true
+```
 
+5. **Start Backtest**
 
-Reading Backtest Results
-The EA outputs detailed statistics:
-═══════════════════════════════════════════════
-  BACKTEST RESULTS
-═══════════════════════════════════════════════
+Click Start button.
+
+Monitor progress bar at bottom.
+
+6. **Analyze Results**
+
+After completion:
+
+**Results Tab:**
+- View every trade
+- Entry/exit prices
+- Profit/loss per trade
+
+**Graph Tab:**
+- Balance curve
+- Drawdown visualization
+- Should show steady growth
+
+**Report Tab:**
+```
 Total Trades: 125
-Winning Trades: 78
-Losing Trades: 47
-Win Rate: 62.40%
-Total Profit: $5,234.50
-Total Loss: $-2,145.30
-Net P&L: $3,089.20
-Max Drawdown: $567.80
-═══════════════════════════════════════════════
-Strategy Tester Settings
-Recommended settings:
-Model: Every tick (most accurate)
-Optimization: Use custom criterion (OnTester)
-Period: M15 or H1
-Dates: Match your prediction file dates
-Visualization: Off (faster)
+Win Rate: 62.4%
+Profit Factor: 1.85
+Max Drawdown: 5.7%
+```
 
-Troubleshooting
-Python Issues
-"MetaTrader5 not installed"
-bashpip install MetaTrader5
-"Failed to initialize MT5"
+**Good results:**
+- Win rate above 55%
+- Profit factor above 1.5
+- Max drawdown below 20%
+- Consistent equity curve
 
-Make sure MetaTrader 5 is running
-Make sure you're logged into a trading account
-Try running Python script as Administrator
-Check MT5 is not already in use by another script
+**Red flags:**
+- Win rate below 45%
+- Profit factor below 1.2
+- Drawdown above 30%
+- Erratic equity curve
 
-"Failed to get data for EURUSD"
+---
 
-Check exact symbol name in MT5 Market Watch
-Try variations: 'EURUSDm', 'EURUSD.a', 'EURUSD.raw'
-Right-click in Market Watch → Show All
-Select symbol → Right-click → Chart Window
-Verify you have historical data: Tools → Options → Charts → Max bars in history
+### Scenario 3: Forward Testing (Paper Trading)
 
-"TensorFlow not found"
-bashpip install tensorflow
-# Or for Apple Silicon Mac:
-pip install tensorflow-macos tensorflow-metal
-"Downloaded 0 bars"
+After successful backtest, test on demo account with live predictions.
 
-Symbol doesn't exist or wrong name
-Not enough historical data in MT5
-Download more history: Tools → Options → Charts → Max bars = 999999
-May need to scroll chart backwards to load history
+**Setup:**
 
-"Model training slow"
+1. **Open Demo Account** (if you don't have one)
+   - File → Open an Account
+   - Select broker
+   - Choose "Demo Account"
+   - Balance: $10,000
 
-Reduce EPOCHS (try 20-30)
-Reduce DAYS (try 365 instead of 730)
-Use GPU acceleration if available
-Close other applications
+2. **Start Python Service**
+```bash
+python predictor3.py EURUSD continuous 60
+```
 
-EA Issues
-"Could not open prediction file"
+3. **Attach Indicator**
+   - Shows live predictions on chart
+   - Monitor accuracy in real-time
 
-Check file is in MQL5/Files/ folder
-File must be named: SYMBOL_TIMEFRAME_lookup.csv
-Example: EURUSD_4H_lookup.csv
+4. **Attach EA**
+   - Use conservative settings initially:
+   ```
+   RiskPercent = 0.5
+   MaxDailyLoss = 3.0
+   MaxOpenTrades = 2
+   MinConfidence = 65.0
+   ```
 
-"No prediction data"
+5. **Monitor for 2-4 Weeks**
+   - Check daily
+   - Track performance
+   - Compare to backtest
+   - Adjust if needed
 
-Ensure backtest dates overlap with prediction dates
-Check prediction file has data for selected timeframe
-Verify file format (timestamp,prediction)
+**Only proceed to live trading if:**
+- Demo results similar to backtest
+- Win rate consistent
+- You understand every trade
+- No emotional stress
 
-"No trades executed"
+---
 
-Check MinConfidence - may be too high
-Verify predictions exist for test period
-Check risk settings (lot size may be too small)
+## Configuration Reference
 
-"Indicator not loaded"
+### Python Script Configuration
 
-Switch to UsePredictionFile = true
-Or install Predictor3.ex5 indicator
-Or use SimulationMode = true
+Edit these at the top of `predictor3.py`:
 
-File Format Issues
-Prediction file format:
-2024.01.01 00:00,1.10523
-2024.01.01 04:00,1.10589
-2024.01.01 08:00,1.10634
-Data file format:
-csvtimestamp,open,high,low,close,volume
-2024-01-01 00:00,1.1050,1.1055,1.1045,1.1052,1000
+```python
+SYMBOL = 'EURUSD'           # Trading pair
+TIMEFRAME = '1H'            # Data timeframe
+DAYS = 2000                 # History days (5+ years)
+EPOCHS = 100                # Training iterations
+```
 
-Advanced Usage
-Optimization
-Optimize these parameters in Strategy Tester:
+**Common symbols:**
+- EURUSD, GBPUSD, USDJPY, AUDUSD
+- Check exact name in MT5 Market Watch
+- May have suffix: EURUSDm, EURUSD.a
 
-RiskPercent (0.5 - 3.0)
-MinConfidence (50 - 80)
-StopLossPips (30 - 100)
-TakeProfitPips (50 - 200)
+### Indicator Settings
 
-Multiple Timeframes
-Test different timeframes:
+When attaching to chart:
 
-Generate predictions for all timeframes (Python does this automatically)
-Run separate backtests for each timeframe
-Compare results to find best performing timeframe
+```
+EnableDebug = true          # Show detailed logs
+UpdateInterval = 30         # File check frequency (seconds)
+AccuracyCheckInterval = 300 # Accuracy update (seconds)
+ShowDetailedStats = true    # Show hit/miss counts
+DisplayXOffset = 20         # Horizontal position
+DisplayYOffset = 20         # Vertical position
+```
 
-Model Improvement
-Improve prediction accuracy:
+### EA Settings
 
-Add more historical data (2+ years)
-Increase training epochs (50-100)
-Add more features in create_features()
-Tune LSTM architecture
-Use ensemble models
+**For Backtesting:**
+```
+UsePredictionFile = true
+PredictionTimeframe = "4H"
+SimulationMode = false
+RiskPercent = 1.0
+MinConfidence = 60.0
+```
+
+**For Live Trading (Conservative):**
+```
+UsePredictionFile = true
+PredictionTimeframe = "4H"
+RiskPercent = 0.5
+MaxDailyLoss = 3.0
+MaxOpenTrades = 2
+MinConfidence = 65.0
+StopLossPips = 50
+TakeProfitPips = 100
+UsePredictionAsTP = true
+UseTrailingStop = true
+```
+
+**For Aggressive Trading:**
+```
+RiskPercent = 2.0
+MaxDailyLoss = 5.0
+MaxOpenTrades = 5
+MinConfidence = 55.0
+```
+
+---
+
+## File Locations and Data Flow
+
+### Data Flow Diagram
+
+```
+Python Script (predictor3.py)
+    |
+    | Generates
+    v
+predictions_EURUSD.json -----> Read by Indicator
+    |                            |
+    |                            | Displays on chart
+    |                            | Tracks accuracy
+    |                            v
+    |                      accuracy_EURUSD_indicator.csv
+    |
+    +--------------------> Read by EA
+                              |
+                              | Uses for trading
+                              | Tracks accuracy
+                              v
+                         accuracy_EURUSD_12345.csv
+```
+
+### Key Files
+
+**Input Files (in MQL5/Files/):**
+```
+predictions_EURUSD.json      - Current predictions from Python
+EURUSD_4H_lookup.csv         - Historical predictions (for backtest)
+```
+
+**Output Files (in MQL5/Files/):**
+```
+prediction_log_EURUSD.csv              - Prediction history log
+accuracy_EURUSD_indicator.csv          - Indicator accuracy tracking
+accuracy_EURUSD_12345.csv              - EA accuracy (by magic number)
+```
+
+**Python Files (in same folder as script):**
+```
+model_EURUSD.h5                        - Trained LSTM model
+feature_scaler_EURUSD.pkl              - Feature scaling parameters
+target_scaler_EURUSD.pkl               - Target scaling parameters
+EURUSD_historical_1H.csv               - Downloaded data
+```
+
+---
+
+## Common Tasks
+
+### Task: Update Predictions Manually
+
+If Python script not running continuously:
+
+```bash
+# Generate single prediction update
+python predictor3.py EURUSD
+
+# This runs once and exits
+```
+
+Files updated:
+- predictions_EURUSD.json
+
+Indicator will pick up changes within 30 seconds (UpdateInterval).
+
+### Task: Retrain Model with Latest Data
+
+Every month or after significant market changes:
+
+```bash
+# Delete old model files
+del model_EURUSD.h5
+del feature_scaler_EURUSD.pkl
+del target_scaler_EURUSD.pkl
+
+# Run backtest mode (will retrain)
+python predictor3.py backtest EURUSD
+```
+
+This downloads fresh data and trains new model.
+
+### Task: Test Different Timeframe
+
+**In Python (backtest):**
+Already generates all timeframes (1H, 4H, 1D, 5D).
+
+**In EA:**
+Change `PredictionTimeframe` parameter:
+- "1H" - More trades, shorter holds
+- "4H" - Balanced (recommended)
+- "1D" - Fewer trades, longer holds
+- "5D" - Very few trades, swing trading
+
+**In Indicator:**
+Shows all timeframes automatically.
+
+### Task: Run Multiple Symbols
+
+**Option 1: Multiple Python Instances**
+
+Open separate Command Prompt windows:
+
+```bash
+# Window 1
+python predictor3.py EURUSD continuous 60
+
+# Window 2
+python predictor3.py GBPUSD continuous 60
+```
+
+**Option 2: Sequential Predictions**
+
+Create batch file:
+```batch
+python predictor3.py EURUSD
+python predictor3.py GBPUSD
+python predictor3.py USDJPY
+```
+
+Run every hour with Task Scheduler.
+
+### Task: Check Prediction Accuracy
+
+**From Indicator:**
+Look at display on chart:
+```
+Confidence: 72.3% | Real Acc: 74.1% (20/27)
+                     ^        ^      ^
+                     |        |      |
+              Real accuracy  Hits  Total
+```
+
+**From Files:**
+
+View `prediction_log_EURUSD.csv`:
+```csv
+4H,1696262400,1.08234,1.08456,1696276800,Hit
+1H,1696262400,1.08234,1.08345,1696266000,Miss
+```
+
+Count Hit vs Miss for each timeframe.
+
+**From EA:**
+Check log in OnDeinit output:
+```
+Prediction Accuracy:
+  1H: 65.0% (13/20)
+  4H: 72.0% (18/25)
+```
+
+### Task: Stop Everything Safely
+
+1. **Stop Python Script**
+   - Go to Command Prompt window
+   - Press Ctrl+C
+   - Wait for "Shutdown complete"
+
+2. **Remove EA from Chart**
+   - Right-click chart
+   - Expert Advisors → Remove
+   - Or close MT5
+
+3. **Remove Indicator**
+   - Right-click chart
+   - Indicators List
+   - Select GGTH Predict v4.1
+   - Delete
+
+Files and accuracy data are saved automatically.
+
+
+## Performance Expectations
+
+
+
+**Prediction Accuracy:**
+- 60-75% direction accuracy is excellent
+- 50-60% is average
+- Below 50% needs investigation
+
+**Trading Results:**
+- 5-15% annual return is realistic
+- 55-65% win rate is good
+- 10-20% max drawdown expected
+
+### When to Adjust
+
+Consider adjusting when:
+- Win rate 45-50% for 2+ weeks
+- Drawdown 10-15%
+- Confidence levels consistently low
+- Market conditions change dramatically
+
+**Adjustments to try:**
+- Change MinConfidence threshold
+- Adjust stop loss / take profit
+- Switch timeframe
+- Retrain model with recent data
+- Reduce position size
+
+---
+
+1. Retrain AI model with latest data
+2. Run fresh backtests
+3. Compare live vs backtest results
+4. Review all parameters
+5. Update software if needed
+
+## Summary: Quick Start
+
+**Absolute minimum to get running:**
+
+1. Install Python packages
+2. Edit MT5 path in predictor3.py
+3. Compile indicator and EA in MT5
+4. Run: `python predictor3.py backtest EURUSD`
+5. Wait for completion
+6. Open Strategy Tester
+7. Load EA, configure for file mode
+8. Run backtest
+9. Review results
+10. If good, try demo account
+
+**For live trading:**
+
+1. Run: `python predictor3.py EURUSD continuous 60`
+2. Attach indicator to chart
+3. Attach EA to chart
+4. Enable algo trading
+5. Monitor closely
+
+**Remember:**
+- Start small
+- Use demo first
+- Track everything
+- Stay disciplined
+- Manage risk
+
+---
+
+This system provides sophisticated AI-powered trading capabilities, but success requires proper setup, testing, and ongoing monitoring. Take time to understand each component before risking real money.
