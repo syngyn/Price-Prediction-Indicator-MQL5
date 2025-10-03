@@ -97,7 +97,7 @@ This will:
 In MT5:
 - Open EURUSD chart
 - Set timeframe to H1
-- Navigator → Indicators → Custom → GGTH Predict v4.1
+- Navigator → Indicators → Custom → Predictor3
 - Drag onto chart
 - Click OK
 
@@ -111,7 +111,7 @@ You'll see:
 
 In MT5:
 - Same chart (EURUSD H1)
-- Navigator → Expert Advisors → GGTH EA v1.3
+- Navigator → Expert Advisors → GGTH predictor
 - Drag onto chart
 - Configure parameters (see Configuration section)
 - Enable Algo Trading button (top toolbar)
